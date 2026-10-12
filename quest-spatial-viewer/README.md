@@ -4,7 +4,13 @@ Source code for the hosted, unmasked Quest spatial recording viewer.
 
 ## Watch the recordings
 
-Open the public [project resources page](https://quest-spatial-viewer-saharnaz.snowypearl.chatgpt.site/resources.html). Choose a take, then use the viewer timeline and playback controls. The page links to the three hosted original recordings and their session data.
+Open the public [project resources page](https://quest-spatial-viewer-saharnaz.snowypearl.chatgpt.site/resources.html). It links to three interactive spatial takes and provides browser playback and downloads for these original MP4 files:
+
+- `QuestSpatialTake-20261011_175129-original.mp4`
+- `QuestSpatialTake-20261011_181252-original.mp4`
+- `QuestSpatialTake-20261011_182103-original.mp4`
+
+The three MP4s are plain original recordings. The interactive viewer currently loads the three spatial takes listed on the resources page; their session manifests and associated room and hand data are hosted alongside the viewer.
 
 ## Source files
 
@@ -13,4 +19,4 @@ Open the public [project resources page](https://quest-spatial-viewer-saharnaz.s
 - `src/math.js` — camera and coordinate math.
 - `src/twin.js` — Three.js room and trajectory viewer.
 
-The deployed viewer also serves the Three.js runtime and the associated session manifests, image frames, audio, room geometry, and hand data. For watching the recordings, use the hosted page; no local installation is required. These files are the viewer source, not the professor's original Quest recorder project.
+The deployed viewer also serves the Three.js runtime. For watching, use the hosted resources page; no local installation is required. These files are the viewer source, not the professor's original Quest recorder project.
