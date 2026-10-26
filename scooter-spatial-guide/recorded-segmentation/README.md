@@ -8,6 +8,7 @@ Python tools used to make the `Quest Scooter Spatial Segmentation` prototype. Th
 - `track_video_masks.py` propagates selected reviewed masks through video with SAM 2.1 Video Predictor and produces frame overlays.
 - `project_capture_masks.py` reprojects reviewed 3D point samples into recorded camera views to create per-frame transparent overlays.
 - `render_segmented_video.py` composites per-frame overlays onto an upright MP4. The saved result is a normal MP4 with masks and labels burned into its pixels.
+- `index.html` and `viewer.js` are the source for the interactive video + 3D point-cloud viewer. They expect the per-capture JSON, masks, PLY files, and video alongside them; those capture assets are not included here. Install the Three.js ES modules (`three.module.js`, `OrbitControls.js`, and `PLYLoader.js`) under `vendor/` from an official Three.js distribution.
 - `build_capture_map.py` builds a sparse background point cloud and a camera path from a Quest take.
 - `add_scooter_components.py` is a scooter-specific example for adding the rear shock and seatpost clamp.
 
@@ -23,9 +24,10 @@ The 3D workflow requires an OpenClaw/Quest capture with the RGB video, packet ti
 2. In `process_capture.py`, review and edit `frame_ids` and the `entries` list for the new video. Each entry needs the frame index, object id and label, a bounding box, positive/negative SAM prompt points, candidate mask index, and display color. These coordinates are specific to the example scooter video.
 3. Run the registered-depth derivation for that capture before the 3D lifting step. Point the commands to the SAM 2 source and checkpoint on your computer; never commit those model weights.
 4. Review the generated masks and PLYs. Adjust prompts and active frame ranges in `project_capture_masks.py`; do not assume that masks follow a moving object automatically. The included video tracking example propagates the scooter seat only.
-5. Generate overlays and render them with FFmpeg. Update the video rotation setting if the Quest export orientation differs.
+5. Generate overlays and render them with FFmpeg. Update the video rotation setting if the Quest export orientation differs. The renderer accepts `--work-dir`, `--video`, `--packets`, `--parts`, `--tracking`, and `--output`; use `--keep-orientation` if that source MP4 is already upright.
+6. To open the 3D viewer for another take, put `index.html`, `viewer.js`, the required Three.js modules, and that take's generated video, annotations, camera poses, intrinsics, per-frame overlays, point clouds, and depth-map PLY in the same expected relative layout. Serve the folder over HTTP; browsers may block local module/data loading from `file://`.
 
-The current scripts use the capture-local layout from the scooter prototype (`left_camera.mp4`, `capture-metadata/`, `registered/registered-depth/`, and overlay folders). They are a research prototype and need per-recording prompt and path edits; this is not a one-click detector for arbitrary objects.
+The viewer source is a starter for the same generated asset schema; its 1280×1280 overlay projection and Quest coordinate conventions may need adjustment for other capture formats. The current scripts use the capture-local layout from the scooter prototype (`left_camera.mp4`, `capture-metadata/`, `registered/registered-depth/`, and overlay folders). They are a research prototype and need per-recording prompt and path edits; this is not a one-click detector for arbitrary objects.
 
 ## Limitations
 
