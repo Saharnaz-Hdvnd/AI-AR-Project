@@ -1,0 +1,4 @@
+numpy
+Pillow
+torch
+# Install SAM 2.1 separately from its official repository; see README.
