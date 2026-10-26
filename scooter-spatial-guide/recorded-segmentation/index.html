@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Quest Spatial Segmentation Viewer</title>
+  <style>
+    :root { color-scheme: dark; font: 15px/1.4 system-ui, sans-serif; background:#0b1216; color:#e3efed; }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:18px; }
+    h1 { margin:0 0 4px; font-size:24px; }
+    .sub { color:#9eb4b2; margin:0 0 16px; }
+    main { display:grid; grid-template-columns:minmax(320px,1fr) minmax(360px,1fr); gap:14px; }
+    section { border:1px solid #28413e; border-radius:12px; background:#101d1c; padding:12px; min-width:0; }
+    h2 { font-size:13px; letter-spacing:.12em; color:#9dd2c2; margin:0 0 10px; }
+    .videobox { aspect-ratio:1/1; position:relative; background:#030606; border-radius:8px; overflow:hidden; }
+    .video-stage { position:absolute; inset:0; transform:rotate(180deg); z-index:0; }
+    video { width:100%; height:100%; object-fit:contain; display:block; }
+    #overlay { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:1; }
+    .video-controls { display:flex; align-items:center; gap:8px; margin-top:9px; }
+    .video-controls input[type=range] { flex:1; min-width:40px; accent-color:#9dd2c2; }
+    .video-controls time { color:#c7d9d6; font-variant-numeric:tabular-nums; white-space:nowrap; font-size:12px; }
+    #scene { display:block; width:100%; aspect-ratio:1.15/1; border-radius:8px; background:#071012; }
+    .controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px; }
+    button, .pill { color:#e7f5ef; background:#213d36; border:1px solid #477364; border-radius:7px; padding:7px 10px; cursor:pointer; }
+    button:hover { background:#2b5448; }
+    #parts { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:5px 12px; margin-top:10px; }
+    label { color:#c7d9d6; display:flex; gap:7px; align-items:center; }
+    .markers { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+    .markers button { font-size:12px; }
+    .note { font-size:12px; color:#a5b8b5; margin-top:10px; }
+    @media(max-width:850px) { main { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Quest capture: spatial part masks</h1>
+  <p class="sub">Capture-specific assets are loaded from this folder · original video + depth-lifted 3D observations</p>
+  <main>
+    <section>
+      <h2>RECORDED VIDEO · TRACKED MASKS AND CAPTURE-SPACE PARTS</h2>
+      <div class="videobox"><div class="video-stage"><video id="video" playsinline preload="metadata" src="./left_camera.mp4"></video></div><canvas id="overlay"></canvas></div>
+      <div class="video-controls"><button id="play" type="button">Play</button><input id="scrub" type="range" min="0" max="46.51" step="0.01" value="0" aria-label="Video position"><time id="elapsed">0:00 / 0:47</time></div>
+      <div class="markers" id="markers"></div>
+      <div class="controls"><label><input id="showParts" type="checkbox" checked> Show 3D-projected scooter-part masks</label><label><input id="showTracking" type="checkbox" checked> Show moving-object tracking masks</label></div>
+      <p class="note">Reviewed per-frame overlays are aligned to the source MP4. Edit annotations and labels for each capture. The source MP4 stays unchanged.</p>
+    </section>
+    <section>
+      <h2>CAPTURE-SPACE 3D · FOLLOW OR ORBIT</h2>
+      <canvas id="scene"></canvas>
+      <div class="controls"><label><input id="follow" type="checkbox" checked> Follow recorded camera</label><label><input id="showRoom" type="checkbox" checked> Show depth map</label><button id="reset">Reset 3D view</button><span class="pill" id="count">Loading parts…</span></div>
+      <div id="parts"></div>
+      <p class="note">The camera follows the recorded pose path; colored object points stay in one capture-space frame. Persistent room anchoring requires valid room geometry and alignment metadata.</p>
+    </section>
+  </main>
+  <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
+  <script type="module" src="./viewer.js?v=4"></script>
+</body>
+</html>
