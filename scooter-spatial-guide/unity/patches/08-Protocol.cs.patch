@@ -1,0 +1,27 @@
+--- a/Assets/GuidedReality/Runtime/Protocol.cs
++++ b/Assets/GuidedReality/Runtime/Protocol.cs
+@@ -14,6 +14,7 @@
+         public int depthGridColumns = 81;
+         public int depthGridRows = 61;
+         public float maxCaptureAgeSeconds = 120;
++        public float headScanPauseSeconds = 0.5f;
+     }
+     [Serializable] public sealed class Detection
+     {
+@@ -57,6 +58,7 @@
+     public struct DepthSample
+     {
+         public Vector2 Viewport;
++        public int GridX, GridY;
+         public Vector3 Point, Normal;
+     }
+     public sealed class FrameSnapshot
+@@ -67,6 +69,8 @@
+         public float CapturedAt;
+         public int Width, Height;
+         public int DepthGridColumns = 81, DepthGridRows = 61;
++        public int MaskDepthGridColumns, MaskDepthGridRows;
++        public readonly List<DepthSample> MaskDepth = new List<DepthSample>();
+         public Pose CameraPose;
+         public Vector3 Ray00, Ray10, Ray01; // camera-local directions with z == 1; frozen intrinsics
+         public byte[] Jpeg;

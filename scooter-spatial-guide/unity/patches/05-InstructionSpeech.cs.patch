@@ -1,0 +1,11 @@
+--- a/Assets/GuidedReality/Runtime/InstructionSpeech.cs
++++ b/Assets/GuidedReality/Runtime/InstructionSpeech.cs
+@@ -32,7 +32,7 @@
+             if (string.IsNullOrWhiteSpace(text)) return;
+             var clip = Resources.Load<AudioClip>(ResourcePath(text));
+             if (!clip) {
+-                Debug.LogWarning("GuidedReality: No bundled narration for this instruction. Run Tools/generate_narration.py after editing 3DPrinter.json.");
++                Debug.LogWarning("GuidedReality: No bundled narration for this instruction. Run Tools/generate_narration.py after editing ScooterRepair.json.");
+                 return;
+             }
+             source.clip = clip;

@@ -1,0 +1,13 @@
+# Local credentials and data
+.env
+*.local.json
+*.apk
+*.aab
+*.pt
+checkpoints/
+.venv/
+sam2-src/
+logs/
+quest-logs/
+*.mp4
+*.mov

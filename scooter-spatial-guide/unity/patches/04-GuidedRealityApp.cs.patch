@@ -1,0 +1,312 @@
+--- a/Assets/GuidedReality/Runtime/GuidedRealityApp.cs
++++ b/Assets/GuidedReality/Runtime/GuidedRealityApp.cs
+@@ -1,5 +1,6 @@
+ using System;
+ using System.IO;
++using System.Text;
+ using System.Threading;
+ using System.Threading.Tasks;
+ using Meta.XR;
+@@ -21,18 +22,33 @@
+         InstructionDocument document;
+         int stepIndex = -1;
+         public string StatusText => status;
+-        public string StepHeading => document == null ? "Printer guidance" : $"Step {stepIndex+1} / {document.instructions.Length}";
+-        public string InstructionText => document == null ? "Look at the printer and press right B to load instructions." : document.instructions[stepIndex].instruction;
++        bool headScanActive;
++        string trackingTargetLabel;
++        CancellationTokenSource headScanCancellation;
++        public string StepHeading {
++            get {
++                if (headScanActive) return "Head-directed target scan";
++                if (document == null) return "Scooter repair demo";
++                string phase = document.instructions[stepIndex].phase;
++                return string.IsNullOrWhiteSpace(phase)
++                    ? $"Step {stepIndex+1} / {document.instructions.Length}"
++                    : $"{phase} · Step {stepIndex+1} / {document.instructions.Length}";
++            }
++        }
++        public string InstructionText => headScanActive
++            ? string.IsNullOrWhiteSpace(trackingTargetLabel) ? "Look directly at a scooter part, screw, or tool; the view center selects it." : $"{trackingTargetLabel}: confirm this part and the repair step in the scooter service manual before acting."
++            : document == null ? "Look at the scooter and press right B to load the repair demo." : document.instructions[stepIndex].instruction;
+         public bool CanNavigate(int action) => !busy && ready && (action == 0 || document != null && (action == 1 ? stepIndex > 0 : stepIndex < document.instructions.Length-1));
+         bool ready;
+         public void Navigate(int action)
+         {
+             if (!CanNavigate(action)) {
+-                SetStatus(busy ? "Still processing; release the stick and try again when ready." : !ready ? "App is still starting." : document == null ? "Press right B to load 3DPrinter.json first." : action == 1 ? "Already at the first step." : "Already at the last step.");
++                SetStatus(busy ? "Still processing; release the stick and try again when ready." : !ready ? "App is still starting." : document == null ? "Press right B to load ScooterRepair.json first." : action == 1 ? "Already at the first step." : "Already at the last step.");
+                 return;
+             }
+             try {
+-                if (action == 0) { if (!Instructions) throw new Exception("Assign 3DPrinter.json to the pipeline Instructions field."); document=InstructionDocument.Parse(Instructions.text); stepIndex=0; }
++                if(action != 0) StopHeadScan();
++                if (action == 0) { Instructions=Resources.Load<TextAsset>("ScooterRepair"); if (!Instructions) throw new Exception("ScooterRepair.json is missing from Assets/Resources."); document=InstructionDocument.Parse(Instructions.text); stepIndex=0; }
+                 else stepIndex += action == 1 ? -1 : 1;
+                 ClearCrop();
+                 SetStatus($"Step {stepIndex+1}/{document.instructions.Length}: {document.instructions[stepIndex].instruction}");
+@@ -49,7 +65,41 @@
+         Mesh cropMesh;
+         Material cropMaterialInstance;
+         string status = "Starting…";
++        TextMesh guidanceHud;
+         void SetStatus(string text) { status=text; Debug.Log("GuidedReality: " + text); }
++        void CreateGuidanceHud()
++        {
++            if(guidanceHud) return;
++            var rig=FindFirstObjectByType<OVRCameraRig>();
++            if(!rig || !rig.centerEyeAnchor) return;
++            var go=new GameObject("Scooter guidance HUD"); go.transform.SetParent(rig.centerEyeAnchor,false);
++            // TextMesh characterSize is in world units. The old 0.0015 scale
++            // reduced the text to sub-millimeter glyphs in the headset.
++            go.transform.localPosition=new Vector3(-.46f,.32f,1.0f); go.transform.localRotation=Quaternion.identity; go.transform.localScale=Vector3.one*.01f;
++            guidanceHud=go.AddComponent<TextMesh>(); guidanceHud.font=Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
++            go.GetComponent<MeshRenderer>().sharedMaterial=guidanceHud.font.material;
++            guidanceHud.fontSize=48; guidanceHud.characterSize=1f; guidanceHud.anchor=TextAnchor.UpperLeft;
++            guidanceHud.alignment=TextAlignment.Left; guidanceHud.color=Color.white; guidanceHud.richText=false;
++        }
++        static string WrapHudLine(string text, int width=40)
++        {
++            var output=new StringBuilder();
++            foreach(string paragraph in (text ?? "").Split('\n')) {
++                int lineLength=0;
++                foreach(string word in paragraph.Split(' ',StringSplitOptions.RemoveEmptyEntries)) {
++                    if(lineLength>0 && lineLength+1+word.Length>width) { output.Append('\n'); lineLength=0; }
++                    else if(lineLength>0) { output.Append(' '); lineLength++; }
++                    output.Append(word); lineLength+=word.Length;
++                }
++                output.Append('\n');
++            }
++            return output.ToString().TrimEnd('\n');
++        }
++        void LateUpdate()
++        {
++            CreateGuidanceHud();
++            if(guidanceHud) guidanceHud.text=$"{WrapHudLine(StepHeading)}\n{WrapHudLine(InstructionText)}\n{WrapHudLine(status)}";
++        }
+         void Awake()
+         {
+             if (LegacyStatusLabel) LegacyStatusLabel.gameObject.SetActive(false);
+@@ -70,11 +120,12 @@
+                     catch (Exception) { SetStatus("Add guidedreality.local.json credentials. See README."); }
+                 }
+                 settings ??= new RuntimeSettings();
++                CreateGuidanceHud();
+ #if UNITY_ANDROID && !UNITY_EDITOR
+                 UnityEngine.Android.Permission.RequestUserPermissions(new[] {"horizonos.permission.HEADSET_CAMERA", "com.oculus.permission.USE_SCENE"});
+ #endif
+-                if (string.IsNullOrWhiteSpace(settings.geminiApiKey)) SetStatus("Set Gemini API key in local config.\nThen look at keyboard and press right A.");
+-                else SetStatus("Right B loads 3DPrinter.json. Right stick left/right changes steps. A retries.");
++                if (string.IsNullOrWhiteSpace(settings.geminiApiKey)) SetStatus("Add your Gemini API key in local config. Right B loads the scooter repair demo.");
++                else SetStatus("Right B loads scooter steps. Press B again to start/stop head-directed target scanning; the stick changes repair-demo steps.");
+                 ready=true;
+             } catch(Exception e) { SetStatus(e.Message); }
+         }
+@@ -85,11 +136,15 @@
+             right.TryGetFeatureValue(CommonUsages.secondaryButton, out bool b);
+             right.TryGetFeatureValue(CommonUsages.primary2DAxis, out Vector2 stick);
+             switch(controllerInput.Read(b, a, stick)) {
+-                case StepCommand.Load: SetStatus("B pressed - load 3DPrinter.json"); Navigate(0); break;
++                case StepCommand.Load:
++                    if(document == null) { SetStatus("B pressed - loading scooter repair steps"); Navigate(0); }
++                    else ToggleHeadScan();
++                    break;
+                 case StepCommand.Previous: Navigate(1); break;
+                 case StepCommand.Next: Navigate(2); break;
+                 case StepCommand.Retry:
+-                    if (!busy && ready) { SetStatus("A pressed - capture started"); _ = Run(); }
++                    if(headScanActive) SetStatus("Head scan is active. Press B to pause it.");
++                    else if (!busy && ready) { SetStatus("A pressed - capture started"); _ = Run(); }
+                     else SetStatus(busy ? "A pressed - already processing" : "A pressed - app still starting");
+                     break;
+             }
+@@ -101,7 +156,7 @@
+             Texture2D texture=null;
+             try {
+                 var cancel = lifetime.Token;
+-                var step=document == null ? new InstructionStep { instruction="Locate keyboard", visual_type=2, key_components=new[]{"keyboard",""} } : document.instructions[stepIndex];
++                var step=document == null ? new InstructionStep { instruction="Locate the clamp bolt", phase="Find", display_label="Clamp bolt", visual_type=1, key_components=new[]{"clamp bolt"} } : document.instructions[stepIndex];
+                 VisualType=step.visual_type;
+                 speech?.Speak(step.instruction);
+                 if (string.IsNullOrWhiteSpace(settings.geminiApiKey) || (VisualType == 2 && string.IsNullOrWhiteSpace(settings.samToken)))
+@@ -109,15 +164,6 @@
+                 SetStatus("Capturing camera + depth…");
+                 FrameSnapshot frame = await Capture.Capture(settings, cancel);
+                 SetStatus($"Saved camera pose + {frame.Width}x{frame.Height} image + {frame.DepthGridColumns}x{frame.DepthGridRows} depth grid ({frame.Depth.Count} valid)");
+-                pending = new GameObject("Guidance capture anchor");
+-                pending.transform.SetPositionAndRotation(frame.CameraPose.position, frame.CameraPose.rotation);
+-                var anchor = pending.AddComponent<OVRSpatialAnchor>();
+-                float limit=Time.realtimeSinceStartup+8;
+-                while (!anchor || !anchor.Localized) {
+-                    cancel.ThrowIfCancellationRequested();
+-                    if (!anchor || Time.realtimeSinceStartup > limit) throw new Exception("Spatial anchor could not localize. Check tracking and try again.");
+-                    await Task.Yield();
+-                }
+                 SetStatus($"Gemini: locating {step.Target}…");
+                 Detection detection = await RemoteClients.FindTarget(frame, step.Target, settings, cancel);
+                 if (!detection.found) { SetStatus($"No {step.Target} found. Reframe and press A."); return; }
+@@ -125,56 +171,130 @@
+                 cancel.ThrowIfCancellationRequested();
+                 if (Time.realtimeSinceStartup-frame.CapturedAt > settings.maxCaptureAgeSeconds) throw new Exception("Capture expired. Press A again.");
+                 if (VisualType != 2) {
++                    pending = new GameObject("Guidance capture anchor");
++                    pending.transform.SetPositionAndRotation(frame.CameraPose.position,frame.CameraPose.rotation);
++                    var anchor=pending.AddComponent<OVRSpatialAnchor>();
++                    float limit=Time.realtimeSinceStartup+8;
++                    while(!anchor || !anchor.Localized) {
++                        cancel.ThrowIfCancellationRequested();
++                        if(!anchor || Time.realtimeSinceStartup>limit) throw new Exception("Spatial anchor could not localize. Check tracking and try again.");
++                        await Task.Yield();
++                    }
+                     pending.AddComponent<GuidanceVisual>().Build(step, frame, detection, CropMaterial);
+                     ClearCrop(); cropRoot=pending; pending=null;
+-                    SetStatus($"Type {VisualType} anchored for {step.Target}. A retries; right stick advances.");
++                    SetStatus($"{step.phase} cue for {step.Target} placed at the captured pose. Reframe and retry after the part moves.");
+                     return;
+                 }
+-                SegmentResponse result = await RemoteClients.Segment(frame, detection, settings, cancel, SetStatus);
+-                cancel.ThrowIfCancellationRequested();
+-                if (Time.realtimeSinceStartup-frame.CapturedAt > settings.maxCaptureAgeSeconds) throw new Exception("Capture expired. Press A again.");
+-                byte[] cropPng = Convert.FromBase64String(result.png_base64);
+-                texture = new Texture2D(2,2,TextureFormat.RGBA32,false);
+-                if (!texture.LoadImage(cropPng) || texture.width != result.crop_rect[2] || texture.height != result.crop_rect[3])
+-                    throw new Exception("Invalid crop PNG.");
+-                SetStatus($"Crop received and decoded: {texture.width} x {texture.height}");
+-                CropGeometry.ApplyBlueTint(texture);
+-                await CaptureDebugLog.SaveCrop(frame, texture.EncodeToPNG());
+-                Vector3[] vertices = CropGeometry.Project(frame, result, texture);
+-                float cropWidth=Vector3.Distance(vertices[0],vertices[1]);
+-                float cropHeight=Vector3.Distance(vertices[0],vertices[3]);
+-                Vector3 cropCenter=(vertices[0]+vertices[1]+vertices[2]+vertices[3])*.25f;
+-                float cropDistance=Vector3.Distance(frame.CameraPose.position,cropCenter);
+-                // Anchors may refine their pose while network requests are in flight.
+-                for(int i=0;i<vertices.Length;i++) vertices[i] = pending.transform.InverseTransformPoint(vertices[i]);
+-                if (!CropMaterial || !CropMaterial.shader || !CropMaterial.shader.isSupported)
+-                    throw new Exception("Crop material/shader is missing or unsupported in this build.");
+-                var mesh = new Mesh { name="Captured keyboard crop" };
+-                mesh.vertices=vertices; mesh.uv=new[]{Vector2.zero,Vector2.right,Vector2.one,Vector2.up};
+-                mesh.triangles=new[]{0,2,1,0,3,2}; mesh.RecalculateNormals(); mesh.RecalculateBounds();
+-                var crop = new GameObject("Keyboard transparent crop", typeof(MeshFilter), typeof(MeshRenderer));
+-                crop.transform.SetParent(pending.transform,false);
+-                crop.GetComponent<MeshFilter>().sharedMesh=mesh;
+-                var material = new Material(CropMaterial); material.mainTexture=texture;
+-                crop.GetComponent<MeshRenderer>().sharedMaterial=material;
+-                pending.AddComponent<GuidanceVisual>().AddCropArrow(step,cropCenter,frame.CameraPose.rotation,cropWidth,CropMaterial);
+-                ClearCrop(); cropRoot=pending; pending=null; cropTexture=texture; texture=null;
+-                cropMesh=mesh; cropMaterialInstance=material;
+-                SetStatus($"Crop anchored: {cropWidth:F2} x {cropHeight:F2} m, {cropDistance:F2} m from capture. Right stick changes steps.");
++                await SegmentAndPlace(step,frame,detection,cancel,true);
+             } catch(OperationCanceledException) { }
+             catch(Exception e) { SetStatus(e.Message); }
+             finally { if(pending) Destroy(pending); if(texture) Destroy(texture); busy=false; }
+         }
++
++        void ToggleHeadScan()
++        {
++            if(headScanActive) { StopHeadScan(); return; }
++            if(!ready || settings == null) { SetStatus("App is still starting."); return; }
++            if(string.IsNullOrWhiteSpace(settings.geminiApiKey) || string.IsNullOrWhiteSpace(settings.samToken)) {
++                SetStatus("Head scan needs the local Gemini key and SAM-2 endpoint/token."); return;
++            }
++            headScanCancellation=CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
++            headScanActive=true; trackingTargetLabel=null;
++            SetStatus("Head-directed scan active. Aim the center of the view at a scooter part, screw, or tool. Press B to pause.");
++            _ = HeadTargetLoop(headScanCancellation.Token);
++        }
++        void StopHeadScan()
++        {
++            if(!headScanActive) return;
++            headScanActive=false; headScanCancellation?.Cancel();
++            SetStatus("Head-directed scan paused. Last spatial cue remains until the next step or scan.");
++        }
++        async Task HeadTargetLoop(CancellationToken cancel)
++        {
++            while(headScanActive && !cancel.IsCancellationRequested) {
++                try {
++                    if(busy) { await Task.Delay(200,cancel); continue; }
++                    busy=true;
++                    await ScanCenteredTarget(cancel);
++                } catch(OperationCanceledException) { break; }
++                  catch(Exception e) { SetStatus("Head scan: " + e.Message); }
++                finally { busy=false; }
++                try { await Task.Delay(Mathf.Max(250,Mathf.RoundToInt(settings.headScanPauseSeconds*1000)),cancel); }
++                catch(OperationCanceledException) { break; }
++            }
++        }
++        async Task ScanCenteredTarget(CancellationToken cancel)
++        {
++            SetStatus("Capturing the headset center view for target selection…");
++            FrameSnapshot frame=await Capture.Capture(settings,cancel,false);
++            // Do not leave the previous spatial mask hanging while a new target is found.
++            ClearCrop();
++            Detection detection=await RemoteClients.FindGazeTarget(frame,trackingTargetLabel,settings,cancel);
++            if(!detection.found) {
++                ClearCrop(); trackingTargetLabel=null;
++                SetStatus("No scooter part or tool centered. Aim at a target and scanning will retry.");
++                return;
++            }
++            string label=detection.label.Trim();
++            bool changed=!string.Equals(label,trackingTargetLabel,StringComparison.OrdinalIgnoreCase);
++            var step=new InstructionStep {
++                instruction=$"{label}: confirm the part and repair procedure in the scooter service manual before acting.",
++                phase="Find", display_label=label, visual_type=2,
++                key_components=new[]{label,"no movement"}
++            };
++            if(changed) speech?.Speak(step.instruction);
++            trackingTargetLabel=label;
++            SetStatus($"Center target: {label}. Requesting a fresh segmentation and spatial depth mesh…");
++            ClearCrop();
++            await SegmentAndPlace(step,frame,detection,cancel,false);
++            SetStatus($"Re-detected {label} and refreshed its depth-lifted 3D mask. Refresh speed depends on headset depth sampling and server latency; this is not a frame-rate video tracker.");
++        }
++        async Task SegmentAndPlace(InstructionStep step, FrameSnapshot frame, Detection detection, CancellationToken cancel, bool saveDebugArtifacts)
++        {
++            GameObject pending=null; Texture2D texture=null;
++            try {
++                pending=new GameObject("Scooter part spatial anchor");
++                pending.transform.SetPositionAndRotation(frame.CameraPose.position,frame.CameraPose.rotation);
++                var anchor=pending.AddComponent<OVRSpatialAnchor>();
++                float limit=Time.realtimeSinceStartup+8;
++                while(!anchor || !anchor.Localized) {
++                    cancel.ThrowIfCancellationRequested();
++                    if(!anchor || Time.realtimeSinceStartup>limit) throw new Exception("Spatial anchor could not localize. Check tracking and try again.");
++                    await Task.Yield();
++                }
++                SegmentResponse result=await RemoteClients.Segment(frame,detection,settings,cancel,SetStatus);
++                cancel.ThrowIfCancellationRequested();
++                if(Time.realtimeSinceStartup-frame.CapturedAt>settings.maxCaptureAgeSeconds) throw new Exception("Capture expired. Reacquire the target.");
++                byte[] cropPng=Convert.FromBase64String(result.png_base64);
++                texture=new Texture2D(2,2,TextureFormat.RGBA32,false);
++                if(!texture.LoadImage(cropPng) || texture.width!=result.crop_rect[2] || texture.height!=result.crop_rect[3]) throw new Exception("Invalid crop PNG.");
++                Capture.RefineDepthForMask(frame,result,texture,cancel,48);
++                CropGeometry.ApplyBlueTint(texture);
++                if(saveDebugArtifacts) await CaptureDebugLog.SaveCrop(frame,texture.EncodeToPNG());
++                var surface=CropGeometry.ProjectMaskToDepth(frame,result,texture);
++                for(int i=0;i<surface.Vertices.Length;i++) surface.Vertices[i]=pending.transform.InverseTransformPoint(surface.Vertices[i]);
++                if(!CropMaterial || !CropMaterial.shader || !CropMaterial.shader.isSupported) throw new Exception("Crop material/shader is missing or unsupported in this build.");
++                var mesh=new Mesh { name="Depth-lifted scooter segmentation" };
++                mesh.vertices=surface.Vertices; mesh.uv=surface.Uv; mesh.triangles=surface.Triangles; mesh.RecalculateNormals(); mesh.RecalculateBounds();
++                var crop=new GameObject("Scooter target 3D mask",typeof(MeshFilter),typeof(MeshRenderer));
++                crop.transform.SetParent(pending.transform,false); crop.GetComponent<MeshFilter>().sharedMesh=mesh;
++                var material=new Material(CropMaterial); material.mainTexture=texture; crop.GetComponent<MeshRenderer>().sharedMaterial=material;
++                pending.AddComponent<GuidanceVisual>().AddCropArrow(step,surface.Center,frame.CameraPose.rotation,surface.Width,CropMaterial);
++                ClearCrop(); cropRoot=pending; pending=null; cropTexture=texture; texture=null; cropMesh=mesh; cropMaterialInstance=material;
++                SetStatus($"3D mask built from {surface.Vertices.Length} depth samples and spatially anchored.");
++            } finally { if(pending) Destroy(pending); if(texture) Destroy(texture); }
++        }
++
+         void ClearCrop()
+         {
+             if(cropRoot) Destroy(cropRoot); if(cropTexture) Destroy(cropTexture);
+             if(cropMesh) Destroy(cropMesh); if(cropMaterialInstance) Destroy(cropMaterialInstance);
+             cropRoot=null; cropTexture=null; cropMesh=null; cropMaterialInstance=null;
+         }
+-        void OnDestroy() { lifetime?.Cancel(); lifetime?.Dispose(); ClearCrop(); }
++        void OnDestroy() { headScanCancellation?.Cancel(); headScanCancellation?.Dispose(); lifetime?.Cancel(); lifetime?.Dispose(); ClearCrop(); }
+         void OnGUI() {
+ #if UNITY_EDITOR
+-            GUI.Label(new Rect(20,20,900,90), "GuidedReality · Quest 3/3S\n"+status+"\nCamera/depth require a headset. This Mac editor is not a camera simulator.");
++            GUI.Label(new Rect(20,20,900,90), "Scooter Spatial Guide · Quest 3/3S\n"+status+"\nCamera/depth require a headset. This Mac editor is not a camera simulator.");
+ #endif
+         }
+     }

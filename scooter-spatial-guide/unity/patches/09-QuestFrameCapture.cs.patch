@@ -1,0 +1,54 @@
+--- a/Assets/GuidedReality/Runtime/QuestFrameCapture.cs
++++ b/Assets/GuidedReality/Runtime/QuestFrameCapture.cs
+@@ -11,7 +11,7 @@
+     {
+         public PassthroughCameraAccess CameraAccess;
+         public EnvironmentRaycastManager Depth;
+-        public async Task<FrameSnapshot> Capture(RuntimeSettings settings, CancellationToken cancel)
++        public async Task<FrameSnapshot> Capture(RuntimeSettings settings, CancellationToken cancel, bool saveDebugArtifacts = true)
+         {
+             float deadline = Time.realtimeSinceStartup + 3;
+             while (!CameraAccess.IsPlaying || !CameraAccess.IsUpdatedThisFrame)
+@@ -46,7 +46,7 @@
+             {
+                 var uv = new Vector2((x+.5f)/cols, (y+.5f)/rows);
+                 if (Depth.Raycast(f.RayAt(uv), out var hit, 5f) && hit.point != Vector3.zero)
+-                    f.Depth.Add(new DepthSample { Viewport=uv, Point=hit.point, Normal=hit.normal });
++                    f.Depth.Add(new DepthSample { Viewport=uv, GridX=x, GridY=y, Point=hit.point, Normal=hit.normal });
+             }
+             depthTimer.Stop();
+             Debug.Log($"GuidedReality: Captured depth {cols}x{rows}, {f.Depth.Count}/{cols*rows} valid samples, {depthTimer.Elapsed.TotalMilliseconds:F1} ms. No depth-image interpolation.");
+@@ -56,9 +56,32 @@
+             var image = new Texture2D(f.Width, f.Height, TextureFormat.RGBA32, false);
+             try { image.LoadRawTextureData(rgba); image.Apply(); f.Jpeg = image.EncodeToJPG(90); }
+             finally { Destroy(image); }
+-            await CaptureDebugLog.SaveCapture(f);
++            if(saveDebugArtifacts) await CaptureDebugLog.SaveCapture(f);
+             if (f.Depth.Count < 3) throw new Exception("Depth not ready. Grant spatial-data permission, look around, then press A again.");
+             return f;
+         }
++
++        // After SAM returns a tight crop, spend extra depth raycasts only inside that target.
++        // This gives small screws a denser depth mesh than the room-wide preview grid.
++        public void RefineDepthForMask(FrameSnapshot frame, SegmentResponse mask, Texture2D texture, CancellationToken cancel, int resolution=48)
++        {
++            mask.Validate(frame);
++            if(!texture || texture.width!=mask.crop_rect[2] || texture.height!=mask.crop_rect[3])
++                throw new Exception("Mask texture dimensions do not match its crop rectangle.");
++            int cols=Mathf.Clamp(resolution,24,96), rows=Mathf.Clamp(Mathf.RoundToInt(cols*(float)texture.height/texture.width),24,96);
++            frame.MaskDepth.Clear(); frame.MaskDepthGridColumns=cols; frame.MaskDepthGridRows=rows;
++            var pixels=texture.GetPixels32(); int[] crop=mask.crop_rect;
++            for(int y=0;y<rows;y++) for(int x=0;x<cols;x++) {
++                if((x+y*cols)%128==0) cancel.ThrowIfCancellationRequested();
++                int mx=Mathf.Clamp(Mathf.FloorToInt((x+.5f)*texture.width/cols),0,texture.width-1);
++                int my=Mathf.Clamp(Mathf.FloorToInt((y+.5f)*texture.height/rows),0,texture.height-1);
++                if(pixels[(texture.height-1-my)*texture.width+mx].a<32) continue;
++                float px=crop[0]+mx+.5f, py=crop[1]+my+.5f;
++                var uv=new Vector2(px/frame.Width,1f-py/frame.Height);
++                if(Depth.Raycast(frame.RayAt(uv),out var hit,5f) && hit.point!=Vector3.zero)
++                    frame.MaskDepth.Add(new DepthSample { Viewport=uv, GridX=x, GridY=y, Point=hit.point, Normal=hit.normal });
++            }
++            Debug.Log($"GuidedReality: Refined target depth grid {cols}x{rows}; {frame.MaskDepth.Count} mask-aligned hits.");
++        }
+     }
+ }

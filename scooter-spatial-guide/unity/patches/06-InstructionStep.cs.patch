@@ -1,0 +1,20 @@
+--- a/Assets/GuidedReality/Runtime/InstructionStep.cs
++++ b/Assets/GuidedReality/Runtime/InstructionStep.cs
+@@ -6,6 +6,8 @@
+     [Serializable] public sealed class InstructionStep
+     {
+         public string instruction;
++        public string phase;
++        public string display_label;
+         public int visual_type;
+         public string[] key_components;
+         public string Target => key_components[0];
+@@ -25,6 +27,8 @@
+         }
+         public void Validate()
+         {
++            if (!string.IsNullOrWhiteSpace(phase) && Array.IndexOf(new[]{"Find","Align","Work","Recover"},phase) < 0)
++                throw new Exception("Unknown scooter handoff phase: " + phase);
+             int count = visual_type == 4 ? 3 : visual_type == 1 ? 1 : 2;
+             if (visual_type < 1 || visual_type > 5 || string.IsNullOrWhiteSpace(instruction) || key_components == null || key_components.Length < count || string.IsNullOrWhiteSpace(Target))
+                 throw new Exception("Invalid instruction or visual_type in instruction JSON.");

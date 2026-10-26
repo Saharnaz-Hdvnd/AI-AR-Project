@@ -1,0 +1,49 @@
+--- /dev/null
++++ b/Assets/Resources/ScooterRepair.json
+@@ -0,0 +1,46 @@
++{
++  "instructions": [
++    {
++      "instruction": "Find the scooter and look over the area you plan to work on.",
++      "phase": "Find",
++      "display_label": "Scooter",
++      "visual_type": 2,
++      "key_components": ["scooter", "no movement"]
++    },
++    {
++      "instruction": "Find the clamp bolt shown in your repair task. Check that this is the intended fastener before proceeding.",
++      "phase": "Align",
++      "display_label": "Clamp bolt — confirm target",
++      "visual_type": 2,
++      "key_components": ["scooter clamp bolt", "no movement"]
++    },
++    {
++      "instruction": "Show the wrench or other tool specified by the scooter manufacturer's instructions. Confirm the tool size and fit before using it.",
++      "phase": "Find",
++      "display_label": "Wrench — verify size and fit",
++      "visual_type": 2,
++      "key_components": ["wrench", "no movement"]
++    },
++    {
++      "instruction": "Align the verified tool with the specified fastener only if the manufacturer's procedure calls for it. Stop if the tool does not fit securely.",
++      "phase": "Align",
++      "display_label": "Tool and fastener — verify fit",
++      "visual_type": 2,
++      "key_components": ["wrench on scooter clamp bolt", "no movement"]
++    },
++    {
++      "instruction": "Follow the scooter manufacturer's procedure and torque specification. This demo does not determine torque or confirm that the fastener is secure.",
++      "phase": "Work",
++      "display_label": "Fastener — follow manufacturer procedure",
++      "visual_type": 2,
++      "key_components": ["scooter clamp bolt", "no movement"]
++    },
++    {
++      "instruction": "If the target, tool fit, or repair step is uncertain, pause and check the manufacturer's instructions before continuing.",
++      "phase": "Recover",
++      "display_label": "Pause and verify",
++      "visual_type": 2,
++      "key_components": ["scooter clamp bolt", "no movement"]
++    }
++  ]
++}

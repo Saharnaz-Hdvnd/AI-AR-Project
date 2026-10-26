@@ -1,0 +1,11 @@
+--- a/Assets/GuidedReality/Runtime/KeyboardPipelineSetup.cs
++++ b/Assets/GuidedReality/Runtime/KeyboardPipelineSetup.cs
+@@ -29,7 +29,7 @@
+             var capture = root.AddComponent<QuestFrameCapture>();
+             capture.CameraAccess = camera; capture.Depth = depth;
+             var app = root.AddComponent<GuidedRealityApp>();
+-            app.Instructions = Instructions;
++            app.Instructions = Resources.Load<TextAsset>("ScooterRepair") ?? Instructions;
+             app.Capture = capture; app.CropMaterial = CropMaterial; app.VisualType = 2;
+             root.SetActive(true);
+         }

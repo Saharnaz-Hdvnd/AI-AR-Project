@@ -1,0 +1,97 @@
+--- a/Assets/GuidedReality/Runtime/CropGeometry.cs
++++ b/Assets/GuidedReality/Runtime/CropGeometry.cs
+@@ -7,8 +7,7 @@
+     {
+         public static Vector2 PixelToViewport(float x, float y, int width, int height) => new Vector2(x / width, 1f - y / height);
+ 
+-        // Swift drawAnimation uses crop-center depth and a plane parallel to the saved camera.
+-        // Quest has a sampled grid: use the valid sample nearest that center inside the crop.
++        // Legacy planar crop projection retained for geometry diagnostics and compatibility.
+         public static Vector3[] Project(FrameSnapshot frame, SegmentResponse crop, Texture2D mask)
+         {
+             crop.Validate(frame);
+@@ -44,6 +43,84 @@
+             return corners;
+         }
+ 
++        public sealed class DepthMaskMesh
++        {
++            public Vector3[] Vertices;
++            public Vector2[] Uv;
++            public int[] Triangles;
++            public Vector3 Center;
++            public float Width;
++        }
++
++        // Lift the SAM alpha mask onto the Quest environment-depth samples. This creates a
++        // real 3D surface patch, rather than a flat crop quad. Its spatial detail is bounded
++        // by the depth ray grid and the accuracy of the headset's scene-depth estimate.
++        public static DepthMaskMesh ProjectMaskToDepth(FrameSnapshot frame, SegmentResponse mask, Texture2D texture)
++        {
++            mask.Validate(frame);
++            if (!texture || texture.width != mask.crop_rect[2] || texture.height != mask.crop_rect[3])
++                throw new Exception("Mask texture dimensions do not match its crop rectangle.");
++            bool useMaskDepth=frame.MaskDepth.Count>0;
++            int cols=useMaskDepth ? frame.MaskDepthGridColumns : frame.DepthGridColumns;
++            int rows=useMaskDepth ? frame.MaskDepthGridRows : frame.DepthGridRows;
++            if (cols<2 || rows<2) throw new Exception("Depth grid is too small to build a 3D mask.");
++            var pixels=texture.GetPixels32();
++            var samples=new DepthSample?[cols*rows];
++            var sourceSamples=useMaskDepth ? frame.MaskDepth : frame.Depth;
++            foreach(var sample in sourceSamples)
++                if(sample.GridX>=0 && sample.GridX<cols && sample.GridY>=0 && sample.GridY<rows)
++                    samples[sample.GridY*cols+sample.GridX]=sample;
++            var active=new bool[cols*rows];
++            var points=new Vector3[cols*rows];
++            var uv=new Vector2[cols*rows];
++            int[] crop=mask.crop_rect;
++            int activeCount=0;
++            for(int y=0;y<rows;y++) for(int x=0;x<cols;x++) {
++                int index=y*cols+x;
++                if(!samples[index].HasValue) continue;
++                var sample=samples[index].Value;
++                int px=Mathf.RoundToInt(sample.Viewport.x*frame.Width);
++                int py=Mathf.RoundToInt((1f-sample.Viewport.y)*frame.Height);
++                int mx=px-crop[0], my=py-crop[1];
++                if(mx<0 || mx>=texture.width || my<0 || my>=texture.height) continue;
++                // Texture2D pixel arrays start at the lower-left; crop_rect is top-left based.
++                int pixelIndex=(texture.height-1-my)*texture.width+mx;
++                if(pixels[pixelIndex].a<32) continue;
++                active[index]=true;
++                points[index]=sample.Point + sample.Normal.normalized*.004f;
++                uv[index]=new Vector2((mx+.5f)/texture.width,1f-(my+.5f)/texture.height);
++                activeCount++;
++            }
++            if(activeCount<3) throw new Exception("The segmented object has too few matching Quest depth samples for a 3D mask. Move closer, increase depth sampling, or choose a larger visible surface.");
++            var vertexMap=new int[cols*rows];
++            Array.Fill(vertexMap,-1);
++            var vertices=new Vector3[activeCount]; var texcoords=new Vector2[activeCount];
++            int next=0; Vector3 center=Vector3.zero; Vector3 min=new Vector3(float.PositiveInfinity,float.PositiveInfinity,float.PositiveInfinity); Vector3 max=new Vector3(float.NegativeInfinity,float.NegativeInfinity,float.NegativeInfinity);
++            for(int i=0;i<active.Length;i++) if(active[i]) {
++                vertexMap[i]=next; vertices[next]=points[i]; texcoords[next]=uv[i]; center+=points[i]; min=Vector3.Min(min,points[i]); max=Vector3.Max(max,points[i]); next++;
++            }
++            center/=activeCount;
++            var triangles=new System.Collections.Generic.List<int>((cols-1)*(rows-1)*6);
++            void AddTriangle(int a,int b,int c) {
++                if(a<0 || b<0 || c<0) return;
++                Vector3 pa=vertices[a],pb=vertices[b],pc=vertices[c];
++                if(Vector3.Distance(pa,pb)>.08f || Vector3.Distance(pb,pc)>.08f || Vector3.Distance(pc,pa)>.08f) return;
++                triangles.Add(a); triangles.Add(b); triangles.Add(c);
++            }
++            for(int y=0;y<rows-1;y++) for(int x=0;x<cols-1;x++) {
++                int a=vertexMap[y*cols+x], b=vertexMap[y*cols+x+1];
++                int c=vertexMap[(y+1)*cols+x+1], d=vertexMap[(y+1)*cols+x];
++                int count=(a>=0?1:0)+(b>=0?1:0)+(c>=0?1:0)+(d>=0?1:0);
++                if(count==4) { AddTriangle(a,b,c); AddTriangle(a,c,d); }
++                else if(count==3) {
++                    if(a<0) AddTriangle(b,c,d); else if(b<0) AddTriangle(a,c,d);
++                    else if(c<0) AddTriangle(a,b,d); else AddTriangle(a,b,c);
++                }
++            }
++            if(triangles.Count<3) throw new Exception("The depth-lifted mask could not form a connected 3D surface. Move closer and recapture.");
++            return new DepthMaskMesh { Vertices=vertices, Uv=texcoords, Triangles=triangles.ToArray(), Center=center, Width=Vector3.Distance(min,max) };
++        }
++
+         // Match the RGB transform in the Swift app's combined.py server; preserve SAM alpha.
+         public static void ApplyBlueTint(Texture2D image)
+         {

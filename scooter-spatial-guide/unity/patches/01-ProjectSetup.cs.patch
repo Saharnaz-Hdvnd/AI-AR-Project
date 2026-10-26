@@ -1,0 +1,67 @@
+--- a/Assets/GuidedReality/Editor/ProjectSetup.cs
++++ b/Assets/GuidedReality/Editor/ProjectSetup.cs
+@@ -45,12 +45,12 @@
+             var textGo=new GameObject("Status"); textGo.transform.SetParent(rig.centerEyeAnchor,false);
+             textGo.transform.localPosition=new Vector3(-.42f,-.24f,1.15f); textGo.transform.localScale=Vector3.one*.0015f;
+             var text=textGo.AddComponent<TextMesh>(); text.fontSize=48; text.characterSize=1;
+-            text.anchor=TextAnchor.MiddleLeft; text.color=Color.white; text.text="GuidedReality · right A to capture";
++            text.anchor=TextAnchor.MiddleLeft; text.color=Color.white; text.text="Scooter Spatial Guide · right B to start";
+             const string materialPath="Assets/GuidedReality/Materials/Crop.mat";
+             var mat=AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+             if(!mat) { mat=new Material(Shader.Find("GuidedReality/TransparentCrop")); AssetDatabase.CreateAsset(mat,materialPath); }
+             var app=new GameObject("GuidedReality").AddComponent<GuidedRealityApp>();
+-            app.Instructions=AssetDatabase.LoadAssetAtPath<TextAsset>("Assets/3DPrinter.json");
++            app.Instructions=AssetDatabase.LoadAssetAtPath<TextAsset>("Assets/Resources/ScooterRepair.json");
+             app.Capture=capture; app.LegacyStatusLabel=text; app.CropMaterial=mat; app.VisualType=2;
+             EditorSceneManager.SaveScene(scene,"Assets/GuidedReality/Scenes/Keyboard.unity");
+             EditorBuildSettings.scenes=new[]{new EditorBuildSettingsScene("Assets/GuidedReality/Scenes/Keyboard.unity",true)};
+@@ -64,8 +64,8 @@
+             var playerObject=new SerializedObject(playerAsset);
+             playerObject.FindProperty("activeInputHandler").intValue=1;
+             playerObject.ApplyModifiedPropertiesWithoutUndo();
+-            PlayerSettings.companyName="Ada"; PlayerSettings.productName="GuidedReality";
+-            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android,"com.ada.guidedreality");
++            PlayerSettings.companyName="Saharnaz"; PlayerSettings.productName="Scooter Spatial Guide";
++            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android,"com.saharnaz.scooterspatialguide");
+             PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android,ScriptingImplementation.IL2CPP);
+             PlayerSettings.Android.targetArchitectures=AndroidArchitecture.ARM64;
+             PlayerSettings.Android.minSdkVersion=AndroidSdkVersions.AndroidApiLevel32;
+@@ -77,8 +77,15 @@
+             var xr=AssetDatabase.LoadAssetAtPath<XRGeneralSettingsPerBuildTarget>("Assets/XR/XRGeneralSettingsPerBuildTarget.asset");
+             if(!xr) throw new Exception("XR settings asset is missing.");
+             EditorBuildSettings.AddConfigObject(XRGeneralSettings.k_SettingsKey,xr,true);
++            // Projects migrated across Unity/XR Management versions can contain
++            // the newer serialized settings list while this package's runtime
++            // dictionary is empty. Recreate the Android entry before accessing it.
++            if(!xr.HasSettingsForBuildTarget(BuildTargetGroup.Android))
++                xr.CreateDefaultSettingsForBuildTarget(BuildTargetGroup.Android);
++            if(!xr.HasManagerSettingsForBuildTarget(BuildTargetGroup.Android))
++                xr.CreateDefaultManagerSettingsForBuildTarget(BuildTargetGroup.Android);
+             var android=xr.SettingsForBuildTarget(BuildTargetGroup.Android);
+-            if(!XRPackageMetadataStore.AssignLoader(android.Manager,"UnityEngine.XR.OpenXR.OpenXRLoader",BuildTargetGroup.Android))
++            if(!XRPackageMetadataStore.AssignLoader(xr.ManagerSettingsForBuildTarget(BuildTargetGroup.Android),"UnityEngine.XR.OpenXR.OpenXRLoader",BuildTargetGroup.Android))
+                 throw new Exception("Could not configure OpenXR Android loader.");
+             var packageSettings=AssetDatabase.LoadAssetAtPath<ScriptableObject>("Assets/XR/Settings/OpenXRPackageSettings.asset");
+             EditorBuildSettings.AddConfigObject("com.unity.xr.openxr.settings4",packageSettings,true);
+@@ -86,7 +93,11 @@
+             if(!openxr) throw new Exception("OpenXR settings failed to initialize.");
+             foreach(var feature in openxr.GetFeatures<UnityEngine.XR.OpenXR.Features.OpenXRFeature>()) {
+                 string name=feature.GetType().Name;
+-                feature.enabled=name=="MetaXRFeature" || name=="OculusTouchControllerProfile" || name=="MetaQuestTouchPlusControllerProfile";
++                // Meta OpenXR features call into the Meta lifecycle hook during
++                // loader initialization. Keep it enabled whenever we enable
++                // Meta XR/AR features; turning it off causes a null proc-address
++                // callback and a native SIGSEGV on Quest startup.
++                feature.enabled=name=="MetaXRFeature" || name=="OpenXRLifeCycleFeature" || name=="ARSessionFeature" || name=="AROcclusionFeature" || name=="OculusTouchControllerProfile" || name=="MetaQuestTouchPlusControllerProfile";
+                 EditorUtility.SetDirty(feature);
+             }
+             var config=OVRProjectConfig.CachedProjectConfig;
+@@ -104,7 +115,7 @@
+             Configure();
+             Directory.CreateDirectory("Builds");
+             var result=BuildPipeline.BuildPlayer(new BuildPlayerOptions {
+-                scenes=new[]{"Assets/GuidedReality/Scenes/Keyboard.unity"}, locationPathName="Builds/GuidedReality.apk",
++                scenes=new[]{"Assets/GuidedReality/Scenes/Keyboard.unity"}, locationPathName="Builds/ScooterSpatialGuide.apk",
+                 target=BuildTarget.Android,options=BuildOptions.Development });
+             if(result.summary.result!=BuildResult.Succeeded) throw new Exception("Android build failed; see Console.");
+         }
